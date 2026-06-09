@@ -707,17 +707,17 @@ if (-not [Environment]::Is64BitOperatingSystem) {
     exit 1
 }
 
-$architecture = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
+$architecture = [System.Runtime.InteropServices.RuntimeInformation,mscorlib]::OSArchitecture.ToString().ToLower()
 $target = $null
 $platformLabel = $null
 $npmTag = $null
 switch ($architecture) {
-    "Arm64" {
+    "arm64" {
         $target = "aarch64-pc-windows-msvc"
         $platformLabel = "Windows (ARM64)"
         $npmTag = "win32-arm64"
     }
-    "X64" {
+    "x64" {
         $target = "x86_64-pc-windows-msvc"
         $platformLabel = "Windows (x64)"
         $npmTag = "win32-x64"
