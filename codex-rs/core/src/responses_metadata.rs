@@ -68,28 +68,24 @@ impl CompactionTurnMetadata {
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum CodexResponsesRequestKind {
-    Connection,
     Turn,
     Prewarm,
     Compaction(CompactionTurnMetadata),
 }
 
 impl CodexResponsesRequestKind {
-    fn request_kind_value(self) -> Option<&'static str> {
+    fn request_kind_value(self) -> &'static str {
         match self {
-            CodexResponsesRequestKind::Connection => None,
-            CodexResponsesRequestKind::Turn => Some("turn"),
-            CodexResponsesRequestKind::Prewarm => Some("prewarm"),
-            CodexResponsesRequestKind::Compaction(_) => Some("compaction"),
+            CodexResponsesRequestKind::Turn => "turn",
+            CodexResponsesRequestKind::Prewarm => "prewarm",
+            CodexResponsesRequestKind::Compaction(_) => "compaction",
         }
     }
 
     fn compaction(self) -> Option<CompactionTurnMetadata> {
         match self {
             CodexResponsesRequestKind::Compaction(metadata) => Some(metadata),
-            CodexResponsesRequestKind::Connection
-            | CodexResponsesRequestKind::Turn
-            | CodexResponsesRequestKind::Prewarm => None,
+            CodexResponsesRequestKind::Turn | CodexResponsesRequestKind::Prewarm => None,
         }
     }
 }
@@ -102,23 +98,6 @@ pub(crate) struct TurnMetadataWorkspace {
     pub(crate) latest_git_commit_hash: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) has_changes: Option<bool>,
-}
-
-pub(crate) struct CodexResponsesMetadataParams {
-    pub(crate) installation_id: String,
-    pub(crate) session_id: String,
-    pub(crate) thread_id: String,
-    pub(crate) turn_id: Option<String>,
-    pub(crate) window_id: String,
-    pub(crate) request_kind: CodexResponsesRequestKind,
-    pub(crate) forked_from_thread_id: Option<ThreadId>,
-    pub(crate) parent_thread_id: Option<ThreadId>,
-    pub(crate) subagent_kind: Option<String>,
-    pub(crate) thread_source: Option<ThreadSource>,
-    pub(crate) sandbox: Option<String>,
-    pub(crate) workspaces: BTreeMap<String, TurnMetadataWorkspace>,
-    pub(crate) turn_started_at_unix_ms: Option<i64>,
-    pub(crate) extra: BTreeMap<String, String>,
 }
 
 /// Single source of truth for Codex metadata sent to ResponsesAPI.
@@ -134,7 +113,7 @@ pub struct CodexResponsesMetadata {
     pub(crate) thread_id: String,
     pub(crate) turn_id: Option<String>,
     pub(crate) window_id: String,
-    pub(crate) request_kind: CodexResponsesRequestKind,
+    pub(crate) request_kind: Option<CodexResponsesRequestKind>,
     pub(crate) forked_from_thread_id: Option<ThreadId>,
     pub(crate) parent_thread_id: Option<ThreadId>,
     pub(crate) subagent_kind: Option<String>,
@@ -146,41 +125,19 @@ pub struct CodexResponsesMetadata {
 }
 
 impl CodexResponsesMetadata {
-    pub(crate) fn new(params: CodexResponsesMetadataParams) -> Self {
-        Self {
-            installation_id: params.installation_id,
-            session_id: params.session_id,
-            thread_id: params.thread_id,
-            turn_id: params.turn_id,
-            window_id: params.window_id,
-            request_kind: params.request_kind,
-            forked_from_thread_id: params.forked_from_thread_id,
-            parent_thread_id: params.parent_thread_id,
-            subagent_kind: params.subagent_kind,
-            thread_source: params.thread_source,
-            sandbox: params.sandbox,
-            workspaces: params.workspaces,
-            turn_started_at_unix_ms: params.turn_started_at_unix_ms,
-            // responsesapi_client_metadata is an app-server enrichment hook into the Codex turn
-            // metadata blob. It is not literal top-level Responses client_metadata, and empty or
-            // conflicting extras must never replace Codex-owned request identity or lineage.
-            extra: filter_extra_metadata(params.extra),
-        }
-    }
-
     pub(crate) fn connection_only(
         installation_id: String,
         session_id: String,
         thread_id: String,
         window_id: String,
     ) -> Self {
-        Self::new(CodexResponsesMetadataParams {
+        Self {
             installation_id,
             session_id,
             thread_id,
             turn_id: None,
             window_id,
-            request_kind: CodexResponsesRequestKind::Connection,
+            request_kind: None,
             forked_from_thread_id: None,
             parent_thread_id: None,
             subagent_kind: None,
@@ -189,73 +146,36 @@ impl CodexResponsesMetadata {
             workspaces: BTreeMap::new(),
             turn_started_at_unix_ms: None,
             extra: BTreeMap::new(),
-        })
+        }
     }
 
     pub(crate) fn has_turn_metadata(&self) -> bool {
-        self.request_kind.request_kind_value().is_some()
+        self.request_kind.is_some()
     }
 
     pub(crate) fn turn_metadata_json(&self) -> Option<String> {
-        let request_kind = self.request_kind.request_kind_value()?;
-        let mut metadata = Map::from_iter([
-            (
-                INSTALLATION_ID_KEY.to_string(),
-                Value::String(self.installation_id.clone()),
-            ),
-            (
-                SESSION_ID_KEY.to_string(),
-                Value::String(self.session_id.clone()),
-            ),
-            (
-                THREAD_ID_KEY.to_string(),
-                Value::String(self.thread_id.clone()),
-            ),
-            (
-                WINDOW_ID_KEY.to_string(),
-                Value::String(self.window_id.clone()),
-            ),
-            (
-                REQUEST_KIND_KEY.to_string(),
-                Value::String(request_kind.to_string()),
-            ),
-        ]);
-        insert_optional_string(&mut metadata, TURN_ID_KEY, self.turn_id.as_deref());
-        insert_optional_value(
-            &mut metadata,
-            FORKED_FROM_THREAD_ID_KEY,
-            self.forked_from_thread_id,
-        );
-        insert_optional_value(&mut metadata, PARENT_THREAD_ID_KEY, self.parent_thread_id);
-        insert_optional_string(
-            &mut metadata,
-            SUBAGENT_KIND_KEY,
-            self.subagent_kind.as_deref(),
-        );
-        insert_optional_value(
-            &mut metadata,
-            THREAD_SOURCE_KEY,
-            self.thread_source.as_ref(),
-        );
-        insert_optional_string(&mut metadata, SANDBOX_KEY, self.sandbox.as_deref());
-        if !self.workspaces.is_empty()
-            && let Ok(workspaces) = serde_json::to_value(&self.workspaces)
-        {
-            metadata.insert(WORKSPACES_KEY.to_string(), workspaces);
-        }
-        if let Some(turn_started_at_unix_ms) = self.turn_started_at_unix_ms {
-            metadata.insert(
-                TURN_STARTED_AT_UNIX_MS_KEY.to_string(),
-                Value::Number(turn_started_at_unix_ms.into()),
-            );
-        }
-        insert_optional_value(
-            &mut metadata,
-            COMPACTION_KEY,
-            self.request_kind.compaction(),
-        );
-        insert_extra_metadata(&mut metadata, &self.extra);
-        to_ascii_json_string(&metadata).ok()
+        let request_kind = self.request_kind?;
+        to_ascii_json_string(&CodexTurnMetadataPayload {
+            installation_id: &self.installation_id,
+            session_id: &self.session_id,
+            thread_id: &self.thread_id,
+            turn_id: self.turn_id.as_deref(),
+            window_id: &self.window_id,
+            request_kind: request_kind.request_kind_value(),
+            forked_from_thread_id: self.forked_from_thread_id,
+            parent_thread_id: self.parent_thread_id,
+            subagent_kind: self.subagent_kind.as_deref(),
+            thread_source: self.thread_source.as_ref(),
+            sandbox: self.sandbox.as_deref(),
+            workspaces: non_empty_workspaces(&self.workspaces),
+            turn_started_at_unix_ms: self.turn_started_at_unix_ms,
+            compaction: request_kind.compaction(),
+            // responsesapi_client_metadata is an app-server enrichment hook into the Codex turn
+            // metadata blob. It is not literal top-level Responses client_metadata, and empty or
+            // conflicting extras must never replace Codex-owned request identity or lineage.
+            extra: filter_extra_metadata(&self.extra),
+        })
+        .ok()
     }
 
     pub(crate) fn client_metadata(&self) -> HashMap<String, String> {
@@ -279,11 +199,6 @@ impl CodexResponsesMetadata {
 
     pub(crate) fn compatibility_headers(&self) -> ApiHeaderMap {
         let mut headers = ApiHeaderMap::new();
-        self.insert_compatibility_headers(&mut headers);
-        headers
-    }
-
-    pub(crate) fn insert_compatibility_headers(&self, headers: &mut ApiHeaderMap) {
         if let Ok(header_value) = HeaderValue::from_str(&self.window_id) {
             headers.insert(X_CODEX_WINDOW_ID_HEADER, header_value);
         }
@@ -299,14 +214,8 @@ impl CodexResponsesMetadata {
         {
             headers.insert(X_CODEX_PARENT_THREAD_ID_HEADER, header_value);
         }
+        headers
     }
-}
-
-pub(crate) fn filter_extra_metadata(extra: BTreeMap<String, String>) -> BTreeMap<String, String> {
-    extra
-        .into_iter()
-        .filter(|(key, _)| !is_reserved_metadata_key(key))
-        .collect()
 }
 
 pub(crate) fn insert_extra_metadata(
@@ -345,20 +254,45 @@ fn is_reserved_metadata_key(key: &str) -> bool {
     )
 }
 
-fn insert_optional_string(metadata: &mut Map<String, Value>, key: &str, value: Option<&str>) {
-    if let Some(value) = value {
-        metadata.insert(key.to_string(), Value::String(value.to_string()));
-    }
+fn filter_extra_metadata(extra: &BTreeMap<String, String>) -> BTreeMap<String, String> {
+    extra
+        .iter()
+        .filter(|(key, _)| !is_reserved_metadata_key(key))
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect()
 }
 
-fn insert_optional_value<T: Serialize>(
-    metadata: &mut Map<String, Value>,
-    key: &str,
-    value: Option<T>,
-) {
-    if let Some(value) = value
-        && let Ok(value) = serde_json::to_value(value)
-    {
-        metadata.insert(key.to_string(), value);
-    }
+fn non_empty_workspaces(
+    workspaces: &BTreeMap<String, TurnMetadataWorkspace>,
+) -> Option<&BTreeMap<String, TurnMetadataWorkspace>> {
+    (!workspaces.is_empty()).then_some(workspaces)
+}
+
+#[derive(Serialize)]
+struct CodexTurnMetadataPayload<'a> {
+    installation_id: &'a str,
+    session_id: &'a str,
+    thread_id: &'a str,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    turn_id: Option<&'a str>,
+    window_id: &'a str,
+    request_kind: &'static str,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    forked_from_thread_id: Option<ThreadId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    parent_thread_id: Option<ThreadId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    subagent_kind: Option<&'a str>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    thread_source: Option<&'a ThreadSource>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    sandbox: Option<&'a str>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    workspaces: Option<&'a BTreeMap<String, TurnMetadataWorkspace>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    turn_started_at_unix_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    compaction: Option<CompactionTurnMetadata>,
+    #[serde(flatten)]
+    extra: BTreeMap<String, String>,
 }

@@ -305,47 +305,27 @@ fn build_ws_client_metadata_includes_window_lineage_and_turn_metadata() {
             .expect("turn metadata"),
     )
     .expect("valid turn metadata");
-    assert_eq!(
-        client_metadata
-            .get(X_CODEX_INSTALLATION_ID_HEADER)
-            .map(String::as_str),
-        Some("11111111-1111-4111-8111-111111111111")
-    );
-    assert_eq!(
-        client_metadata
-            .get(X_CODEX_WINDOW_ID_HEADER)
-            .map(String::as_str),
-        Some(expected_window_id.as_str())
-    );
-    assert_eq!(
-        client_metadata.get("session_id").map(String::as_str),
-        Some(session_id.as_str())
-    );
-    assert_eq!(
-        client_metadata.get("thread_id").map(String::as_str),
-        Some(thread_id.as_str())
-    );
-    assert_eq!(
-        client_metadata.get("turn_id").map(String::as_str),
-        Some("turn-123")
-    );
-    assert_eq!(
-        turn_metadata["installation_id"].as_str(),
-        Some("11111111-1111-4111-8111-111111111111")
-    );
-    assert_eq!(
-        turn_metadata["session_id"].as_str(),
-        Some(session_id.as_str())
-    );
-    assert_eq!(
-        turn_metadata["thread_id"].as_str(),
-        Some(thread_id.as_str())
-    );
-    assert_eq!(turn_metadata["turn_id"].as_str(), Some("turn-123"));
-    assert_eq!(
-        turn_metadata["window_id"].as_str(),
-        Some(expected_window_id.as_str())
-    );
+    for (client_key, metadata_key, expected) in [
+        (
+            X_CODEX_INSTALLATION_ID_HEADER,
+            "installation_id",
+            "11111111-1111-4111-8111-111111111111",
+        ),
+        ("session_id", "session_id", session_id.as_str()),
+        ("thread_id", "thread_id", thread_id.as_str()),
+        ("turn_id", "turn_id", "turn-123"),
+        (
+            X_CODEX_WINDOW_ID_HEADER,
+            "window_id",
+            expected_window_id.as_str(),
+        ),
+    ] {
+        assert_eq!(
+            client_metadata.get(client_key).map(String::as_str),
+            Some(expected)
+        );
+        assert_eq!(turn_metadata[metadata_key].as_str(), Some(expected));
+    }
 }
 
 #[tokio::test]

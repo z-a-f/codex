@@ -114,7 +114,6 @@ use crate::client_common::ResponseEvent;
 use crate::client_common::ResponseStream;
 use crate::feedback_tags;
 use crate::responses_metadata::CodexResponsesMetadata;
-use crate::responses_metadata::CodexResponsesMetadataParams;
 use crate::responses_metadata::CodexResponsesRequestKind;
 use crate::turn_metadata::TurnMetadataState;
 use crate::util::emit_feedback_auth_recovery_tags;
@@ -648,13 +647,13 @@ impl ModelClient {
     }
 
     pub fn request_metadata(&self, turn_id: Option<&str>) -> CodexResponsesMetadata {
-        CodexResponsesMetadata::new(CodexResponsesMetadataParams {
+        CodexResponsesMetadata {
             installation_id: self.state.installation_id.clone(),
             session_id: self.state.session_id.to_string(),
             thread_id: self.state.thread_id.to_string(),
             turn_id: turn_id.map(ToString::to_string),
             window_id: self.current_window_id(),
-            request_kind: CodexResponsesRequestKind::Turn,
+            request_kind: Some(CodexResponsesRequestKind::Turn),
             forked_from_thread_id: None,
             parent_thread_id: self.state.parent_thread_id,
             subagent_kind: subagent_metadata_kind(&self.state.session_source),
@@ -663,7 +662,7 @@ impl ModelClient {
             workspaces: BTreeMap::new(),
             turn_started_at_unix_ms: None,
             extra: BTreeMap::new(),
-        })
+        }
     }
 
     pub(crate) fn connection_metadata(&self) -> CodexResponsesMetadata {

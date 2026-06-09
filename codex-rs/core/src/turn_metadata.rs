@@ -12,12 +12,10 @@ use serde_json::Value;
 use tokio::task::JoinHandle;
 
 use crate::responses_metadata::CodexResponsesMetadata;
-use crate::responses_metadata::CodexResponsesMetadataParams;
 use crate::responses_metadata::CodexResponsesRequestKind;
 use crate::responses_metadata::REQUEST_KIND_KEY;
 use crate::responses_metadata::TURN_STARTED_AT_UNIX_MS_KEY;
 use crate::responses_metadata::TurnMetadataWorkspace;
-use crate::responses_metadata::filter_extra_metadata;
 use crate::responses_metadata::insert_extra_metadata;
 use crate::sandbox_tags::permission_profile_sandbox_tag;
 use codex_git_utils::get_git_remote_urls_assume_git_repo;
@@ -283,7 +281,7 @@ impl TurnMetadataState {
         request_kind: CodexResponsesRequestKind,
     ) -> CodexResponsesMetadata {
         let bag = self.current_metadata_bag();
-        CodexResponsesMetadata::new(CodexResponsesMetadataParams {
+        CodexResponsesMetadata {
             installation_id,
             session_id: bag
                 .session_id
@@ -293,7 +291,7 @@ impl TurnMetadataState {
                 .expect("TurnMetadataState always has a thread_id"),
             turn_id: bag.turn_id,
             window_id,
-            request_kind,
+            request_kind: Some(request_kind),
             forked_from_thread_id: bag.forked_from_thread_id,
             parent_thread_id: bag.parent_thread_id,
             subagent_kind: bag.subagent_kind,
@@ -305,7 +303,7 @@ impl TurnMetadataState {
                 .read()
                 .unwrap_or_else(std::sync::PoisonError::into_inner),
             extra: self.current_extra_metadata(),
-        })
+        }
     }
 
     pub(crate) fn mark_user_input_requested_during_turn(&self) {
@@ -355,7 +353,7 @@ impl TurnMetadataState {
             .unwrap_or_default()
             .into_iter()
             .collect();
-        filter_extra_metadata(metadata)
+        metadata
     }
 
     pub(crate) fn set_turn_started_at_unix_ms(&self, turn_started_at_unix_ms: i64) {
