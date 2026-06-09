@@ -292,33 +292,59 @@ fn build_ws_client_metadata_includes_window_lineage_and_turn_metadata() {
 
     client.advance_window_generation();
 
-    let request_identity = client.request_identity(Some("turn-123"));
-    let client_metadata = client.build_ws_client_metadata(
-        &request_identity,
-        Some(r#"{"turn_id":"turn-123"}"#),
-        /*use_responses_lite*/ false,
-    );
+    let responses_metadata = client.request_metadata(Some("turn-123"));
+    let client_metadata =
+        client.build_ws_client_metadata(&responses_metadata, /*use_responses_lite*/ false);
     let thread_id = client.state.thread_id;
-    let session_id = client.state.session_id;
+    let session_id = client.state.session_id.to_string();
+    let thread_id = thread_id.to_string();
+    let expected_window_id = format!("{thread_id}:1");
+    let turn_metadata: serde_json::Value = serde_json::from_str(
+        client_metadata
+            .get(X_CODEX_TURN_METADATA_HEADER)
+            .expect("turn metadata"),
+    )
+    .expect("valid turn metadata");
     assert_eq!(
-        client_metadata,
-        std::collections::HashMap::from([
-            (
-                X_CODEX_INSTALLATION_ID_HEADER.to_string(),
-                "11111111-1111-4111-8111-111111111111".to_string(),
-            ),
-            (
-                X_CODEX_WINDOW_ID_HEADER.to_string(),
-                format!("{thread_id}:1"),
-            ),
-            ("session_id".to_string(), session_id.to_string()),
-            ("thread_id".to_string(), thread_id.to_string()),
-            ("turn_id".to_string(), "turn-123".to_string()),
-            (
-                X_CODEX_TURN_METADATA_HEADER.to_string(),
-                r#"{"turn_id":"turn-123"}"#.to_string(),
-            ),
-        ])
+        client_metadata
+            .get(X_CODEX_INSTALLATION_ID_HEADER)
+            .map(String::as_str),
+        Some("11111111-1111-4111-8111-111111111111")
+    );
+    assert_eq!(
+        client_metadata
+            .get(X_CODEX_WINDOW_ID_HEADER)
+            .map(String::as_str),
+        Some(expected_window_id.as_str())
+    );
+    assert_eq!(
+        client_metadata.get("session_id").map(String::as_str),
+        Some(session_id.as_str())
+    );
+    assert_eq!(
+        client_metadata.get("thread_id").map(String::as_str),
+        Some(thread_id.as_str())
+    );
+    assert_eq!(
+        client_metadata.get("turn_id").map(String::as_str),
+        Some("turn-123")
+    );
+    assert_eq!(
+        turn_metadata["installation_id"].as_str(),
+        Some("11111111-1111-4111-8111-111111111111")
+    );
+    assert_eq!(
+        turn_metadata["session_id"].as_str(),
+        Some(session_id.as_str())
+    );
+    assert_eq!(
+        turn_metadata["thread_id"].as_str(),
+        Some(thread_id.as_str())
+    );
+    assert_eq!(turn_metadata["turn_id"].as_str(), Some("turn-123"));
+    assert_eq!(
+        turn_metadata["window_id"].as_str(),
+        Some(expected_window_id.as_str())
     );
 }
 
@@ -547,14 +573,10 @@ fn model_client_with_counting_attestation(
 async fn websocket_handshake_includes_attestation_for_chatgpt_codex_responses() {
     let (model_client, attestation_calls) =
         model_client_with_counting_attestation(/*include_attestation*/ true);
-    let request_identity = model_client.request_identity(/*turn_id*/ None);
+    let responses_metadata = model_client.connection_metadata();
 
     let headers = model_client
-        .build_websocket_headers(
-            &request_identity,
-            /*turn_state*/ None,
-            /*turn_metadata_header*/ None,
-        )
+        .build_websocket_headers(&responses_metadata, /*turn_state*/ None)
         .await;
 
     assert_eq!(

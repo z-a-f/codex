@@ -112,7 +112,7 @@ async fn responses_stream_includes_subagent_header_on_review() {
         /*beta_features_header*/ None,
         /*attestation_provider*/ None,
     );
-    let request_identity = client.request_identity(/*turn_id*/ None);
+    let responses_metadata = client.request_metadata(/*turn_id*/ None);
     let mut client_session = client.new_session();
 
     let mut prompt = Prompt::default();
@@ -133,8 +133,7 @@ async fn responses_stream_includes_subagent_header_on_review() {
             effort,
             summary.unwrap_or(model_info.default_reasoning_summary),
             /*service_tier*/ None,
-            &request_identity,
-            /*turn_metadata_header*/ None,
+            &responses_metadata,
             &codex_rollout_trace::InferenceTraceContext::disabled(),
         )
         .await
@@ -247,7 +246,7 @@ async fn responses_stream_includes_subagent_header_on_other() {
         /*beta_features_header*/ None,
         /*attestation_provider*/ None,
     );
-    let request_identity = client.request_identity(/*turn_id*/ None);
+    let responses_metadata = client.request_metadata(/*turn_id*/ None);
     let mut client_session = client.new_session();
 
     let mut prompt = Prompt::default();
@@ -268,8 +267,7 @@ async fn responses_stream_includes_subagent_header_on_other() {
             effort,
             summary.unwrap_or(model_info.default_reasoning_summary),
             /*service_tier*/ None,
-            &request_identity,
-            /*turn_metadata_header*/ None,
+            &responses_metadata,
             &codex_rollout_trace::InferenceTraceContext::disabled(),
         )
         .await
@@ -367,7 +365,7 @@ async fn responses_respects_model_info_overrides_from_config() {
         /*beta_features_header*/ None,
         /*attestation_provider*/ None,
     );
-    let request_identity = client.request_identity(/*turn_id*/ None);
+    let responses_metadata = client.request_metadata(/*turn_id*/ None);
     let mut client_session = client.new_session();
 
     let mut prompt = Prompt::default();
@@ -388,8 +386,7 @@ async fn responses_respects_model_info_overrides_from_config() {
             effort,
             summary.unwrap_or(model_info.default_reasoning_summary),
             /*service_tier*/ None,
-            &request_identity,
-            /*turn_metadata_header*/ None,
+            &responses_metadata,
             &codex_rollout_trace::InferenceTraceContext::disabled(),
         )
         .await

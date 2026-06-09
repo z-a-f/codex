@@ -133,6 +133,12 @@ fn assert_codex_client_metadata(
     )
     .expect("valid x-codex-turn-metadata json");
     assert_eq!(
+        turn_metadata["installation_id"].as_str(),
+        Some(installation_id)
+    );
+    assert_eq!(turn_metadata["session_id"].as_str(), Some(session_id));
+    assert_eq!(turn_metadata["thread_id"].as_str(), Some(thread_id));
+    assert_eq!(
         client_metadata["turn_id"].as_str(),
         turn_metadata["turn_id"].as_str()
     );
@@ -943,7 +949,7 @@ async fn send_provider_auth_request(server: &MockServer, auth: ModelProviderAuth
         /*beta_features_header*/ None,
         /*attestation_provider*/ None,
     );
-    let request_identity = client.request_identity(/*turn_id*/ None);
+    let responses_metadata = client.request_metadata(/*turn_id*/ None);
     let mut client_session = client.new_session();
     let mut prompt = Prompt::default();
     prompt.input.push(ResponseItem::Message {
@@ -963,8 +969,7 @@ async fn send_provider_auth_request(server: &MockServer, auth: ModelProviderAuth
             effort,
             summary.unwrap_or(ReasoningSummary::Auto),
             /*service_tier*/ None,
-            &request_identity,
-            /*turn_metadata_header*/ None,
+            &responses_metadata,
             &codex_rollout_trace::InferenceTraceContext::disabled(),
         )
         .await
@@ -2438,7 +2443,7 @@ async fn azure_responses_request_includes_store_and_reasoning_ids() {
         /*beta_features_header*/ None,
         /*attestation_provider*/ None,
     );
-    let request_identity = client.request_identity(/*turn_id*/ None);
+    let responses_metadata = client.request_metadata(/*turn_id*/ None);
     let mut client_session = client.new_session();
 
     let mut prompt = Prompt::default();
@@ -2512,8 +2517,7 @@ async fn azure_responses_request_includes_store_and_reasoning_ids() {
             effort,
             summary.unwrap_or(ReasoningSummary::Auto),
             /*service_tier*/ None,
-            &request_identity,
-            /*turn_metadata_header*/ None,
+            &responses_metadata,
             &codex_rollout_trace::InferenceTraceContext::disabled(),
         )
         .await

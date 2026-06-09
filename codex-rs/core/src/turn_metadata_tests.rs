@@ -1,7 +1,14 @@
 use super::*;
 
-use crate::request_identity::CodexRequestIdentity;
+use crate::responses_metadata::CodexResponsesRequestKind;
+use crate::responses_metadata::CompactionTurnMetadata;
+use crate::responses_metadata::INSTALLATION_ID_KEY;
+use crate::responses_metadata::WINDOW_ID_KEY;
 use crate::sandbox_tags::permission_profile_sandbox_tag;
+use codex_analytics::CompactionImplementation;
+use codex_analytics::CompactionPhase;
+use codex_analytics::CompactionReason;
+use codex_analytics::CompactionTrigger;
 use codex_protocol::models::PermissionProfile;
 use codex_protocol::openai_models::ReasoningEffort as ReasoningEffortConfig;
 use codex_protocol::protocol::SessionSource;
@@ -24,13 +31,34 @@ fn test_mcp_turn_metadata_context() -> McpTurnMetadataContext<'static> {
     }
 }
 
-fn test_request_identity(window_id: &str) -> CodexRequestIdentity {
-    CodexRequestIdentity::new(
-        "installation-a".to_string(),
-        "session-a".to_string(),
-        "thread-a".to_string(),
-        Some("turn-a".to_string()),
-        window_id.to_string(),
+fn test_responses_metadata_json(
+    state: &TurnMetadataState,
+    window_id: &str,
+    request_kind: CodexResponsesRequestKind,
+) -> String {
+    state
+        .current_responses_metadata(
+            "installation-a".to_string(),
+            window_id.to_string(),
+            request_kind,
+        )
+        .turn_metadata_json()
+        .expect("turn metadata json")
+}
+
+fn test_turn_responses_metadata_json(state: &TurnMetadataState, window_id: &str) -> String {
+    test_responses_metadata_json(state, window_id, CodexResponsesRequestKind::Turn)
+}
+
+fn test_compaction_responses_metadata_json(
+    state: &TurnMetadataState,
+    window_id: &str,
+    compaction: CompactionTurnMetadata,
+) -> String {
+    test_responses_metadata_json(
+        state,
+        window_id,
+        CodexResponsesRequestKind::Compaction(compaction),
     )
 }
 
@@ -565,6 +593,11 @@ fn turn_metadata_state_merges_client_metadata_without_replacing_reserved_fields(
         ),
         ("session_id".to_string(), "client-supplied".to_string()),
         ("thread_id".to_string(), "client-supplied".to_string()),
+        ("installation_id".to_string(), "client-supplied".to_string()),
+        (
+            "x-codex-installation-id".to_string(),
+            "client-supplied".to_string(),
+        ),
         (
             "forked_from_thread_id".to_string(),
             "client-supplied".to_string(),
@@ -597,6 +630,8 @@ fn turn_metadata_state_merges_client_metadata_without_replacing_reserved_fields(
     assert_eq!(json["reasoning_effort"].as_str(), Some("client-supplied"));
     assert_eq!(json["session_id"].as_str(), Some("session-a"));
     assert_eq!(json["thread_id"].as_str(), Some("thread-a"));
+    assert!(json.get(INSTALLATION_ID_KEY).is_none());
+    assert!(json.get("x-codex-installation-id").is_none());
     assert_eq!(
         json["forked_from_thread_id"].as_str(),
         Some("44444444-4444-4444-8444-444444444444")
@@ -615,12 +650,14 @@ fn turn_metadata_state_merges_client_metadata_without_replacing_reserved_fields(
         Some(1_700_000_000_123)
     );
 
-    let model_request_header = state
-        .current_header_value_for_model_request(&test_request_identity("thread-a:1"))
-        .expect("model request header");
+    let model_request_header = test_turn_responses_metadata_json(&state, "thread-a:1");
     let model_request_json: Value =
         serde_json::from_str(&model_request_header).expect("model request json");
     assert_eq!(model_request_json["request_kind"].as_str(), Some("turn"));
+    assert_eq!(
+        model_request_json[INSTALLATION_ID_KEY].as_str(),
+        Some("installation-a")
+    );
     assert_eq!(
         model_request_json[WINDOW_ID_KEY].as_str(),
         Some("thread-a:1")
@@ -658,17 +695,16 @@ fn turn_metadata_state_overlays_compaction_only_on_compaction_requests() {
         "client-supplied".to_string(),
     )]));
 
-    let compact_header = state
-        .current_header_value_for_compaction(
-            &test_request_identity("thread-a:2"),
-            CompactionTurnMetadata::new(
-                CompactionTrigger::Auto,
-                CompactionReason::ContextLimit,
-                CompactionImplementation::ResponsesCompactionV2,
-                CompactionPhase::MidTurn,
-            ),
-        )
-        .expect("compact header");
+    let compact_header = test_compaction_responses_metadata_json(
+        &state,
+        "thread-a:2",
+        CompactionTurnMetadata::new(
+            CompactionTrigger::Auto,
+            CompactionReason::ContextLimit,
+            CompactionImplementation::ResponsesCompactionV2,
+            CompactionPhase::MidTurn,
+        ),
+    );
     let compact_json: Value = serde_json::from_str(&compact_header).expect("json");
     assert_eq!(compact_json["request_kind"].as_str(), Some("compaction"));
     assert_eq!(compact_json["turn_id"].as_str(), Some("turn-a"));
@@ -684,9 +720,7 @@ fn turn_metadata_state_overlays_compaction_only_on_compaction_requests() {
         })
     );
 
-    let regular_header = state
-        .current_header_value_for_model_request(&test_request_identity("thread-a:3"))
-        .expect("regular header");
+    let regular_header = test_turn_responses_metadata_json(&state, "thread-a:3");
     let regular_json: Value = serde_json::from_str(&regular_header).expect("json");
     assert_eq!(regular_json["request_kind"].as_str(), Some("turn"));
     assert_eq!(regular_json[WINDOW_ID_KEY].as_str(), Some("thread-a:3"));

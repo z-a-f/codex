@@ -8,6 +8,7 @@ use tracing::info;
 use tracing::warn;
 
 use crate::client::ModelClientSession;
+use crate::responses_metadata::CodexResponsesRequestKind;
 use crate::session::INITIAL_SUBMIT_ID;
 use crate::session::session::Session;
 use crate::session::turn::build_prompt;
@@ -260,13 +261,10 @@ async fn schedule_startup_prewarm_inner(
         build_prompt_started_at.elapsed(),
         /*status*/ None,
     );
-    let request_identity = session
-        .services
-        .model_client
-        .request_identity(Some(&startup_turn_context.sub_id));
-    let startup_turn_metadata_header = startup_turn_context
-        .turn_metadata_state
-        .current_header_value_for_prewarm(&request_identity);
+    let responses_metadata = session.services.model_client.responses_metadata(
+        &startup_turn_context.turn_metadata_state,
+        CodexResponsesRequestKind::Prewarm,
+    );
     let mut client_session = session.services.model_client.new_session();
     let websocket_warmup_started_at = Instant::now();
     client_session
@@ -277,8 +275,7 @@ async fn schedule_startup_prewarm_inner(
             startup_turn_context.reasoning_effort.clone(),
             startup_turn_context.reasoning_summary,
             startup_turn_context.config.service_tier.clone(),
-            &request_identity,
-            startup_turn_metadata_header.as_deref(),
+            &responses_metadata,
         )
         .await?;
     startup_turn_context.session_telemetry.record_startup_phase(

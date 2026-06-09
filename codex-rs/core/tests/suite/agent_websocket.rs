@@ -220,7 +220,7 @@ async fn websocket_v2_test_codex_shell_chain() -> Result<()> {
     assert_eq!(warmup["type"].as_str(), Some("response.create"));
     assert_eq!(warmup["generate"].as_bool(), Some(false));
     assert_eq!(first_turn["type"].as_str(), Some("response.create"));
-    assert_eq!(first_turn["previous_response_id"].as_str(), Some("warm-1"));
+    assert!(first_turn.get("previous_response_id").is_none());
     assert!(
         first_turn
             .get("input")

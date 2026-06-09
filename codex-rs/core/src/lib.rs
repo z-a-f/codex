@@ -12,11 +12,11 @@ mod client_common;
 mod realtime_context;
 mod realtime_conversation;
 mod realtime_prompt;
-mod request_identity;
+mod responses_metadata;
 mod responses_retry;
 pub(crate) mod session;
 #[doc(hidden)]
-pub use request_identity::CodexRequestIdentity;
+pub use responses_metadata::CodexResponsesMetadata;
 pub use session::SteerInputError;
 mod codex_thread;
 mod compact_remote;

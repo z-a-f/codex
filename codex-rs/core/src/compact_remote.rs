@@ -14,10 +14,11 @@ use crate::hook_runtime::PostCompactHookOutcome;
 use crate::hook_runtime::PreCompactHookOutcome;
 use crate::hook_runtime::run_post_compact_hooks;
 use crate::hook_runtime::run_pre_compact_hooks;
+use crate::responses_metadata::CodexResponsesRequestKind;
+use crate::responses_metadata::CompactionTurnMetadata;
 use crate::session::session::Session;
 use crate::session::turn::built_tools;
 use crate::session::turn_context::TurnContext;
-use crate::turn_metadata::CompactionTurnMetadata;
 use codex_analytics::CompactionImplementation;
 use codex_analytics::CompactionPhase;
 use codex_analytics::CompactionReason;
@@ -229,13 +230,10 @@ async fn run_remote_compact_task_inner_impl(
         output_schema: None,
         output_schema_strict: true,
     };
-    let request_identity = sess
-        .services
-        .model_client
-        .request_identity(Some(&turn_context.sub_id));
-    let turn_metadata_header = turn_context
-        .turn_metadata_state
-        .current_header_value_for_compaction(&request_identity, compaction_metadata);
+    let responses_metadata = sess.services.model_client.responses_metadata(
+        &turn_context.turn_metadata_state,
+        CodexResponsesRequestKind::Compaction(compaction_metadata),
+    );
     let mut new_history = sess
         .services
         .model_client
@@ -253,8 +251,7 @@ async fn run_remote_compact_task_inner_impl(
             },
             &turn_context.session_telemetry,
             &compaction_trace,
-            &request_identity,
-            turn_metadata_header.as_deref(),
+            &responses_metadata,
         )
         .or_else(|err| async {
             let total_usage_breakdown = sess.get_total_token_usage_breakdown().await;

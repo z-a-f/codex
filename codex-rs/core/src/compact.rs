@@ -8,13 +8,14 @@ use crate::hook_runtime::PostCompactHookOutcome;
 use crate::hook_runtime::PreCompactHookOutcome;
 use crate::hook_runtime::run_post_compact_hooks;
 use crate::hook_runtime::run_pre_compact_hooks;
-use crate::request_identity::CodexRequestIdentity;
+use crate::responses_metadata::CodexResponsesMetadata;
+use crate::responses_metadata::CodexResponsesRequestKind;
+use crate::responses_metadata::CompactionTurnMetadata;
 #[cfg(test)]
 use crate::session::PreviousTurnSettings;
 use crate::session::session::Session;
 use crate::session::turn::get_last_assistant_message_from_turn;
 use crate::session::turn_context::TurnContext;
-use crate::turn_metadata::CompactionTurnMetadata;
 use crate::util::backoff;
 use codex_analytics::CodexCompactionEvent;
 use codex_analytics::CompactionImplementation;
@@ -229,19 +230,15 @@ async fn run_compact_task_inner_impl(
             personality: turn_context.personality,
             ..Default::default()
         };
-        let request_identity = sess
-            .services
-            .model_client
-            .request_identity(Some(&turn_context.sub_id));
-        let turn_metadata_header = turn_context
-            .turn_metadata_state
-            .current_header_value_for_compaction(&request_identity, compaction_metadata);
+        let responses_metadata = sess.services.model_client.responses_metadata(
+            &turn_context.turn_metadata_state,
+            CodexResponsesRequestKind::Compaction(compaction_metadata),
+        );
         let attempt_result = drain_to_completed(
             &sess,
             turn_context.as_ref(),
             &mut client_session,
-            &request_identity,
-            turn_metadata_header.as_deref(),
+            &responses_metadata,
             &prompt,
         )
         .await;
@@ -584,8 +581,7 @@ async fn drain_to_completed(
     sess: &Session,
     turn_context: &TurnContext,
     client_session: &mut ModelClientSession,
-    request_identity: &CodexRequestIdentity,
-    turn_metadata_header: Option<&str>,
+    responses_metadata: &CodexResponsesMetadata,
     prompt: &Prompt,
 ) -> CodexResult<()> {
     let mut stream = client_session
@@ -596,8 +592,7 @@ async fn drain_to_completed(
             turn_context.reasoning_effort.clone(),
             turn_context.reasoning_summary,
             turn_context.config.service_tier.clone(),
-            request_identity,
-            turn_metadata_header,
+            responses_metadata,
             // Rollout tracing currently models remote compaction only; local compaction streams
             // are left untraced until the reducer has a first-class local compaction lifecycle.
             &InferenceTraceContext::disabled(),
